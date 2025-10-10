@@ -1,0 +1,12 @@
+# IDE settings
+.idea/
+.idea/dataSources/
+
+# Python cache/setting files
+**/__pycache__/
+
+# Sample data
+**/*.txt
+
+# Mock databases
+*.db
