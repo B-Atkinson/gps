@@ -13,6 +13,7 @@ import time
 from platform import system
 from datetime import datetime
 from typing import Optional
+import argparse
 
 
 class GPSReader:
@@ -169,7 +170,8 @@ class GPSReader:
 
         except KeyboardInterrupt:
             print("\nStopping GPS reader...")
-
+        except Exception as e:
+            print(f"Error reading GPS data: {e}")
         finally:
             conn.close()
 
@@ -243,24 +245,35 @@ class GPSReader:
 
 
 def main():
-    # Create GPS reader instance
-    gps = GPSReader(db_path='gps_data.db')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--database", help="Full database path.", type=str, default="gps_data.db")
+    parser.add_argument("-p", "--port", help="Serial port.", type=str, default=None)
+    args = parser.parse_args()
 
-    print(f"\n{'=' * 60}")
-    print(f"GPS Data Logger - Running on {gps.os_type}")
-    print(f"{'=' * 60}\n")
+    while True:
+        try:
+            # Create GPS reader instance
+            gps = GPSReader(db_path=args.database)
 
-    # Option 1: Auto-detect GPS port
-    if gps.connect(baudrate=9600):
-        gps.read_and_parse()
+            print(f"\n{'=' * 60}")
+            print(f"GPS Data Logger - Running on {gps.os_type}")
+            print(f"{'=' * 60}\n")
 
-    # Option 2: Specify port manually (uncomment to use)
-    # Windows example: gps.connect(port='COM3', baudrate=9600)
-    # Linux example: gps.connect(port='/dev/ttyUSB0', baudrate=9600)
-    # if gps.connect(port='COM3', baudrate=9600):  # Adjust port as needed
-    #     gps.read_and_parse(duration=60)  # Read for 60 seconds
+            if args.port is not None and gps.connect(port=args.port, baudrate=9600):
+                gps.read_and_parse()
+            elif gps.connect(baudrate=9600):
+                gps.read_and_parse()
+            else:
+                print("No serial port found!")
+                break
 
-    gps.close()
+        except Exception:
+            pass
+        finally:
+            try:
+                gps.close()
+            except Exception:
+                pass
 
 
 if __name__ == '__main__':
