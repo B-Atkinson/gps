@@ -1,0 +1,16 @@
+services:
+  gps_reader:
+    build: .
+    privileged: true
+    container_name: gps_reader
+    volumes:
+      - /home/crusader/gps/db:/app/data
+      - /dev:/dev
+    restart: unless-stopped
+    # optional healthcheck so you notice failures
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sqlite3; import pynmea2,serial; print('ok')"]
+      interval: 30s
+      timeout: 5s
+      retries: 2
+      start_period: 10s

@@ -147,6 +147,8 @@ class GPSReader:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        continue_looping = True
+
         print("Reading GPS data... (Press Ctrl+C to stop)")
 
         try:
@@ -170,10 +172,13 @@ class GPSReader:
 
         except KeyboardInterrupt:
             print("\nStopping GPS reader...")
+            continue_looping = False
         except Exception as e:
             print(f"Error reading GPS data: {e}")
         finally:
             conn.close()
+
+        return continue_looping
 
     def process_message(self, msg, raw_sentence: str, cursor):
         """Process different types of NMEA messages"""
@@ -249,8 +254,9 @@ def main():
     parser.add_argument("-d", "--database", help="Full database path.", type=str, default="gps_data.db")
     parser.add_argument("-p", "--port", help="Serial port.", type=str, default=None)
     args = parser.parse_args()
+    continue_looping = True
 
-    while True:
+    while continue_looping:
         try:
             # Create GPS reader instance
             gps = GPSReader(db_path=args.database)
@@ -260,9 +266,9 @@ def main():
             print(f"{'=' * 60}\n")
 
             if args.port is not None and gps.connect(port=args.port, baudrate=9600):
-                gps.read_and_parse()
+                continue_looping = gps.read_and_parse()
             elif gps.connect(baudrate=9600):
-                gps.read_and_parse()
+                continue_looping = gps.read_and_parse()
             else:
                 print("No serial port found!")
                 break
