@@ -12,8 +12,10 @@ import sqlite3
 import time
 from platform import system
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import argparse
+
+from serial.tools.list_ports_common import ListPortInfo
 
 
 class GPSReader:
@@ -68,7 +70,7 @@ class GPSReader:
             print()
 
         # Common GPS device identifiers (case-insensitive)
-        gps_keywords = ['gps', 'nmea', 'u-blox', 'ublox', 'prolific', 'ch340',
+        gps_keywords = ['gps', 'gnss', 'nmea', 'u-blox', 'ublox', 'prolific', 'ch340',
                         'cp210', 'ftdi', 'pl2303', 'globalsat', 'garmin']
 
         # Try to find GPS device by description/manufacturer
@@ -80,7 +82,7 @@ class GPSReader:
                 keyword in desc_lower or keyword in mfg_lower
                 for keyword in gps_keywords
             ):
-                print(f"✓ GPS device auto-detected at: {port.device}")
+                print(f"GPS device auto-detected at: {port.device}")
                 print(f"  ({port.description})")
                 return port.device
 
@@ -88,24 +90,73 @@ class GPSReader:
         if self.os_type == 'Windows':
             # On Windows, look for COM ports (usually COM3 and higher for USB devices)
             com_ports = [p for p in ports if 'COM' in p.device]
-            if com_ports:
-                print(f"⚠ No GPS auto-detected. Using first COM port: {com_ports[0].device}")
-                return com_ports[0].device
+            # if com_ports:
+            #     print(f"⚠ No GPS auto-detected. Using first COM port: {com_ports[0].device}")
+            #     return com_ports[0].device
+            return com_ports
 
         elif self.os_type == 'Linux':
             # On Linux, prefer ttyUSB or ttyACM devices
             usb_ports = [p for p in ports if 'ttyUSB' in p.device or 'ttyACM' in p.device]
-            if usb_ports:
-                print(f"⚠ No GPS auto-detected. Using first USB serial port: {usb_ports[0].device}")
-                return usb_ports[0].device
+            # if usb_ports:
+            #     print(f"⚠ No GPS auto-detected. Using first USB serial port: {usb_ports[0].device}")
+            #     return usb_ports[0].device
+            return usb_ports
 
         # If still nothing found, use first available port
         if ports:
-            print(f"⚠ No GPS auto-detected. Using first available port: {ports[0].device}")
-            return ports[0].device
+            # print(f"⚠ No GPS auto-detected. Using first available port: {ports[0].device}")
+            # return ports[0].device
+            return ports
 
         print("✗ No serial ports found!")
         return None
+
+    def _check_ports(self, ports: List[ListPortInfo], baudrate: int = 9600):
+        """Test each port to see if it outputs valid NMEA sentences"""
+        for port_info in ports:
+            port_device = port_info.device
+            temp_serial = None
+
+            try:
+                print(f"Testing port {port_device}...")
+                temp_serial = serial.Serial(
+                    port=port_device,
+                    baudrate=baudrate,
+                    timeout=1,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE
+                )
+
+                start_time = time.time()
+
+                while (time.time() - start_time) < 2.0:
+                    if temp_serial.in_waiting:
+                        line = temp_serial.readline().decode('ascii', errors='ignore').strip()
+
+                        if line.startswith('$'):
+                            try:
+                                pynmea2.parse(line)
+                                print(f"✓ Valid NMEA data found on {port_device}")
+                                # Keep this connection open and store it
+                                self.serial_port = temp_serial
+                                return port_device
+                            except pynmea2.ParseError:
+                                # Not valid NMEA, try next port
+                                break
+
+                # No valid NMEA found, close and try next port
+                if temp_serial and temp_serial.is_open:
+                    temp_serial.close()
+
+            except Exception as e:
+                print(f"Error testing {port_device}: {e}")
+                if temp_serial and temp_serial.is_open:
+                    temp_serial.close()
+
+        return None
+
 
     def connect(self, port: Optional[str] = None, baudrate: int = 9600) -> bool:
         """
@@ -119,6 +170,17 @@ class GPSReader:
             print("No serial port found!")
             return False
 
+        # If we got a list of ports, test each one
+        elif isinstance(port, list):
+            port = self._check_ports(port, baudrate)
+            if not port:
+                print("No GPS device found on any port!")
+                return False
+            # self.serial_port is already set by _check_ports
+            print(f"Connected to {port} at {baudrate} baud")
+            return True
+
+        # Single port specified
         try:
             self.serial_port = serial.Serial(
                 port=port,
@@ -192,7 +254,6 @@ class GPSReader:
             )
             gps_t = f"{msg.timestamp:%H:%M:%S}"
 
-
             cursor.execute(
                 '''
                 INSERT INTO gps_data
@@ -258,7 +319,6 @@ def main():
 
     while continue_looping:
         try:
-            # Create GPS reader instance
             gps = GPSReader(db_path=args.database)
 
             print(f"\n{'=' * 60}")
