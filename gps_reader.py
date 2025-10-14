@@ -17,13 +17,23 @@ import argparse
 
 from serial.tools.list_ports_common import ListPortInfo
 
+class Logger:
+    def __init__(self):
+        self._entries =[]
+
+    def log(self, entry):
+        self._entries.append(entry)
+        if len(self._entries) >= 10:
+            print('\n'.join(self._entries), flush=True)
+            self._entries.clear()
 
 class GPSReader:
     def __init__(self, db_path: str = 'gps_data.db'):
         self.db_path = db_path
         self.serial_port = None
         self.os_type = system()  # 'Windows', 'Linux', 'Darwin'
-        print(f"Detected OS: {self.os_type}")
+        self.logger = Logger()
+        self.logger.log(f"Detected OS: {self.os_type}")
         self.init_database()
 
     def init_database(self):
@@ -56,18 +66,17 @@ class GPSReader:
         """
         ports = serial.tools.list_ports.comports()
 
-        print(f"\n{'=' * 60}")
-        print(f"Scanning for GPS devices on {self.os_type}...")
-        print(f"{'=' * 60}")
-        print(f"Available serial ports ({len(ports)} found):\n")
+        self.logger.log(f"\n{'=' * 60}")
+        self.logger.log(f"Scanning for GPS devices on {self.os_type}...")
+        self.logger.log(f"{'=' * 60}")
+        self.logger.log(f"Available serial ports ({len(ports)} found):\n")
 
         for port in ports:
-            print(f"  Port: {port.device}")
-            print(f"    Description: {port.description}")
-            print(f"    Manufacturer: {port.manufacturer}")
-            print(f"    VID:PID: {port.vid}:{port.pid}")
-            print(f"    Serial Number: {port.serial_number}")
-            print()
+            self.logger.log(f"  Port: {port.device}")
+            self.logger.log(f"    Description: {port.description}")
+            self.logger.log(f"    Manufacturer: {port.manufacturer}")
+            self.logger.log(f"    VID:PID: {port.vid}:{port.pid}")
+            self.logger.log(f"    Serial Number: {port.serial_number}")
 
         # Common GPS device identifiers (case-insensitive)
         gps_keywords = ['gps', 'gnss', 'nmea', 'u-blox', 'ublox', 'prolific', 'ch340',
@@ -82,8 +91,8 @@ class GPSReader:
                 keyword in desc_lower or keyword in mfg_lower
                 for keyword in gps_keywords
             ):
-                print(f"GPS device auto-detected at: {port.device}")
-                print(f"  ({port.description})")
+                self.logger.log(f"GPS device auto-detected at: {port.device}")
+                self.logger.log(f"  ({port.description})")
                 return port.device
 
         # Platform-specific fallback logic
@@ -109,7 +118,7 @@ class GPSReader:
             # return ports[0].device
             return ports
 
-        print("✗ No serial ports found!")
+        self.logger.log("✗ No serial ports found!")
         return None
 
     def _check_ports(self, ports: List[ListPortInfo], baudrate: int = 9600):
@@ -119,7 +128,7 @@ class GPSReader:
             temp_serial = None
 
             try:
-                print(f"Testing port {port_device}...")
+                self.logger.log(f"Testing port {port_device}...")
                 temp_serial = serial.Serial(
                     port=port_device,
                     baudrate=baudrate,
@@ -138,7 +147,7 @@ class GPSReader:
                         if line.startswith('$'):
                             try:
                                 pynmea2.parse(line)
-                                print(f"✓ Valid NMEA data found on {port_device}")
+                                self.logger.log(f"✓ Valid NMEA data found on {port_device}")
                                 # Keep this connection open and store it
                                 self.serial_port = temp_serial
                                 return port_device
@@ -151,7 +160,7 @@ class GPSReader:
                     temp_serial.close()
 
             except Exception as e:
-                print(f"Error testing {port_device}: {e}")
+                self.logger.log(f"Error testing {port_device}: {e}")
                 if temp_serial and temp_serial.is_open:
                     temp_serial.close()
 
@@ -167,17 +176,17 @@ class GPSReader:
             port = self.detect_gps_port()
 
         if port is None:
-            print("No serial port found!")
+            self.logger.log("No serial port found!")
             return False
 
         # If we got a list of ports, test each one
         elif isinstance(port, list):
             port = self._check_ports(port, baudrate)
             if not port:
-                print("No GPS device found on any port!")
+                self.logger.log("No GPS device found on any port!")
                 return False
             # self.serial_port is already set by _check_ports
-            print(f"Connected to {port} at {baudrate} baud")
+            self.logger.log(f"Connected to {port} at {baudrate} baud")
             return True
 
         # Single port specified
@@ -190,10 +199,10 @@ class GPSReader:
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
-            print(f"Connected to {port} at {baudrate} baud")
+            self.logger.log(f"Connected to {port} at {baudrate} baud")
             return True
         except serial.SerialException as e:
-            print(f"Error connecting to {port}: {e}")
+            self.logger.log(f"Error connecting to {port}: {e}")
             return False
 
     def read_and_parse(self, duration: Optional[int] = None):
@@ -202,7 +211,7 @@ class GPSReader:
         duration: seconds to read (None = infinite)
         """
         if not self.serial_port or not self.serial_port.is_open:
-            print("Serial port not connected!")
+            self.logger.log("Serial port not connected!")
             return
 
         start_time = time.time()
@@ -211,7 +220,7 @@ class GPSReader:
 
         continue_looping = True
 
-        print("Reading GPS data... (Press Ctrl+C to stop)")
+        self.logger.log("Reading GPS data... (Press Ctrl+C to stop)")
 
         try:
             while True:
@@ -228,15 +237,15 @@ class GPSReader:
                             self.process_message(msg, line, cursor)
                             conn.commit()
                         except pynmea2.ParseError as e:
-                            print(f"Parse error: {e}")
+                            self.logger.log(f"Parse error: {e}")
                         except Exception as e:
-                            print(f"Error processing message: {e}")
+                            self.logger.log(f"Error processing message: {e}")
 
         except KeyboardInterrupt:
-            print("\nStopping GPS reader...")
+            self.logger.log("\nStopping GPS reader...")
             continue_looping = False
         except Exception as e:
-            print(f"Error reading GPS data: {e}")
+            self.logger.log(f"Error reading GPS data: {e}")
         finally:
             conn.close()
 
@@ -248,7 +257,7 @@ class GPSReader:
         # GGA - Global Positioning System Fix Data
         # https://docs.novatel.com/OEM7/Content/Logs/GPGGA.htm
         if isinstance(msg, pynmea2.GGA) and msg.is_valid:
-            print(
+            self.logger.log(
                 f"GGA: Lat={msg.latitude:.6f}, Lon={msg.longitude:.6f}, "
                 f"Alt={msg.altitude}m, Sats={msg.num_sats}, Time={msg.timestamp:%H:%M:%S}"
             )
@@ -267,7 +276,7 @@ class GPSReader:
         # RMC - Recommended Minimum Navigation Information
         # https://docs.novatel.com/OEM7/Content/Logs/GPRMC.htm
         elif isinstance(msg, pynmea2.RMC) and msg.is_valid:
-            print(
+            self.logger.log(
                 f"RMC: Lat={msg.latitude:.6f}, Lon={msg.longitude:.6f}, "
                 f"Speed={msg.spd_over_grnd} knots, Course={msg.true_course}°, Date={msg.datetime:%d/%m/%Y}, Time={msg.datetime:%H:%M:%S}"
             )
@@ -287,7 +296,7 @@ class GPSReader:
         # GSA - GPS DOP and active satellites
         # https://docs.novatel.com/OEM7/Content/Logs/GPGSA.htm
         elif isinstance(msg, pynmea2.GSA) and msg.is_valid:
-            print(f"GSA: HDOP={msg.hdop}, VDOP={msg.vdop}, PDOP={msg.pdop}")
+            self.logger.log(f"GSA: HDOP={msg.hdop}, VDOP={msg.vdop}, PDOP={msg.pdop}")
             cursor.execute(
                 '''
                 INSERT INTO gps_data
@@ -307,7 +316,7 @@ class GPSReader:
         """Close serial connection"""
         if self.serial_port and self.serial_port.is_open:
             self.serial_port.close()
-            print("Serial port closed")
+            self.logger.log("Serial port closed")
 
 
 def main():
@@ -321,16 +330,16 @@ def main():
         try:
             gps = GPSReader(db_path=args.database)
 
-            print(f"\n{'=' * 60}")
-            print(f"GPS Data Logger - Running on {gps.os_type}")
-            print(f"{'=' * 60}\n")
+            print(f"\n{'=' * 60}", flush=False)
+            print(f"GPS Data Logger - Running on {gps.os_type}", flush=False)
+            print(f"{'=' * 60}\n", flush=True)
 
             if args.port is not None and gps.connect(port=args.port, baudrate=9600):
                 continue_looping = gps.read_and_parse()
             elif gps.connect(baudrate=9600):
                 continue_looping = gps.read_and_parse()
             else:
-                print("No serial port found!")
+                print("No serial port found!", flush=True)
                 break
 
         except Exception:

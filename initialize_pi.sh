@@ -17,7 +17,7 @@ function change_timezone {
     ((i++))
   done
 
-  read -n 4 -p "Time zone number to use (as shown in the printed menu): " zoneNumber
+  read -p "Time zone number to use (as shown in the printed menu): " zoneNumber
   let j=1
   let zoneName="NONE"
   for zone in $(timedatectl list-timezones); do
@@ -31,6 +31,20 @@ function change_timezone {
   done
 
   sudo timedatectl set-timezone "$zoneName"
+}
+
+function build_database_dir {
+  mkdir -p "$HOME/gps/db"
+  echo -e "Current memory infrastructure of disk:\n"
+  lsblk
+
+  read -r -p $'\nDo you want to create a partition where the database files will be stored (y/[n])?  ' partitionDatabases
+  if [[ "$partitionDatabases" =~ ^([yY]{1}) ]]; then
+    read -r -p $'\nEnter the whole number of Gigabytes to use for the partition (y/[n])?  ' partitionSize
+    if [[ "$partitionSize" =~ (\d*) ]]; then
+      sudo ./ensure_db_partition.sh $partitionSize
+    fi
+  fi
 }
 
 #### Update and upgrade packages ####
@@ -69,17 +83,17 @@ print_header "Update GPS logging software."
 if [ -d "$HOME/gps" ]; then
   curDir=$(pwd)
   cd "$HOME/gps"
+  docker compose down
   git pull
+  build_database_dir
 
   else
     echo -e "\n\n*************** ERROR ***************\n"
     echo -e "Unable to find software. Please ensure the repository is located at: $HOME/gps"
     exit 1
 fi
-mkdir -p "$HOME/gps/db"
 
 print_header "Restarting container with new update"
-docker compose down
 docker compose up -d
 
 exit 0
