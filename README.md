@@ -1,93 +1,201 @@
-# GPSCollector
+# GPS Collector
 
+GPS Collector reads NMEA messages from a USB-connected GPS puck and stores the raw sentences in a local SQLite database. The main entrypoint is [gps_reader.py](/home/brian/PycharmProjects/gps_collector/gps_reader.py), with container support defined in [Dockerfile](/home/brian/PycharmProjects/gps_collector/Dockerfile) and [compose.yaml](/home/brian/PycharmProjects/gps_collector/compose.yaml).
 
+## Purpose
 
-## Getting started
+This project is for collecting GPS NMEA messages received by a GPS puck. It watches serial ports, connects to the GPS device, parses the incoming NMEA stream, and records the original sentences in SQLite for later review or downstream processing.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## What It Does
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Detects likely GPS serial devices automatically on Linux and Windows
+- Connects to a GPS receiver at `9600` baud
+- Parses NMEA sentences with `pynmea2`
+- Stores every received sentence in SQLite
+- Marks recognized, valid NMEA messages as `verified = true`
 
-## Add your files
+The `gps_data` table contains:
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- `id`
+- `verified`
+- `gps_date`
+- `gps_time`
+- `raw_sentence`
 
+## Repository Layout
+
+- `gps_reader.py`: serial port detection, NMEA parsing, and SQLite writes
+- `Dockerfile`: Ubuntu-based image that installs Python, `pyserial`, and `pynmea2`
+- `compose.yaml`: long-running container setup with `/dev` access and a persistent database volume
+
+## Clone The Repository
+
+```bash
+git clone https://github.com/B-Atkinson/gps.git
+cd gps_collector
 ```
-cd existing_repo
-git remote add origin https://gitlab.vulcan.mil/army-software-factory/mcswf/maritime-domain-awareness/gpscollector.git
-git branch -M main
-git push -uf origin main
+
+Replace `https://github.com/B-Atkinson/gps.git` with the URL for your Git remote.
+
+## Install And Run Locally
+
+### Requirements
+
+- Python 3.10+ recommended
+- A USB GPS puck that presents itself as a serial device
+- Linux, Raspberry Pi OS, or Windows
+
+### Create A Virtual Environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install pyserial==3.5 pynmea2==1.19.0
 ```
 
-## Integrate with your tools
+### Start The Reader
 
-- [ ] [Set up project integrations](https://gitlab.vulcan.mil/army-software-factory/mcswf/maritime-domain-awareness/gpscollector/-/settings/integrations)
+```bash
+python3 gps_reader.py
+```
 
-## Collaborate with your team
+By default the script:
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+- Scans available serial ports
+- Chooses a GPS-like device if one is detected
+- Creates or updates `gps_data.db` in the current directory
+- Continues reading until you stop it with `Ctrl+C`
 
-## Test and Deploy
+### Useful Command Examples
 
-Use the built-in continuous integration in GitLab.
+Write to a specific database file:
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```bash
+python3 gps_reader.py --database /path/to/gps_data.db
+```
 
-***
+Use a specific serial device instead of auto-detection:
 
-# Editing this README
+```bash
+python3 gps_reader.py --port /dev/ttyUSB0 --database ./gps_data.db
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+On Windows, the port argument would look like:
 
-## Suggestions for a good README
+```bash
+python3 gps_reader.py --port COM3
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Run On A Raspberry Pi With A USB GPS Puck
 
-## Name
-Choose a self-explaining name for your project.
+These steps assume Raspberry Pi OS and a GPS puck connected over USB.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### 1. Connect The GPS Puck
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Plug the puck into a USB port on the Raspberry Pi.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### 2. Confirm The Serial Device
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+List serial devices:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+If your GPS is detected, it will usually appear as something like `/dev/ttyUSB0` or `/dev/ttyACM0`.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+You can also inspect kernel messages:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+dmesg | tail
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### 3. Clone The Project
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```bash
+git clone https://github.com/B-Atkinson/gps.git
+cd gps_collector
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### 4. Run It Directly On The Pi
 
-## License
-For open source projects, say how it is licensed.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install pyserial==3.5 pynmea2==1.19.0
+python3 gps_reader.py --port /dev/ttyUSB0 --database ./gps_data.db
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+If you prefer auto-detection, omit `--port`.
+
+### 5. Verify That Data Is Being Written
+
+Open the SQLite database:
+
+```bash
+sqlite3 gps_data.db
+```
+
+Then run:
+
+```sql
+SELECT id, verified, gps_date, gps_time, raw_sentence
+FROM gps_data
+ORDER BY id DESC
+LIMIT 10;
+```
+
+## Run With Docker Compose On Raspberry Pi
+
+The provided container setup is intended for a host that has access to the GPS device under `/dev`. The container entrypoint writes daily database files named like `gps_data_YYYY-MM-DD.db` into `/app/data`.
+
+### 1. Review The Compose Volume Path
+
+The current [compose.yaml](/home/brian/PycharmProjects/gps_collector/compose.yaml) maps:
+
+```yaml
+volumes:
+  - /home/crusader/gps/db:/app/data
+  - /dev:/dev
+```
+
+Update `/home/crusader/gps/db` to a real directory on your Raspberry Pi if needed.
+
+For example:
+
+```bash
+mkdir -p /home/pi/gps/db
+```
+
+Then change the compose file to use that directory.
+
+### 2. Build And Start The Container
+
+```bash
+docker compose up --build -d
+```
+
+### 3. Check Logs
+
+```bash
+docker compose logs -f gps_reader
+```
+
+### 4. Inspect The Database Files
+
+On the Raspberry Pi host, the database files will be written to the host directory you mapped to `/app/data`.
+
+Example:
+
+```bash
+ls /home/pi/gps/db
+```
+
+## Notes
+
+- The script currently uses a fixed baud rate of `9600`.
+- Valid `GGA`, `RMC`, and `GSA` messages are marked as verified.
+- Unrecognized or invalid sentences are still stored, but with `verified = false`.
+- The Docker Compose service runs with `privileged: true` and mounts `/dev` so the container can access USB serial devices.
